@@ -379,31 +379,40 @@ export class CogneeHttpClient {
   // POST /api/v1/forget — unified deletion (per-item / per-dataset / everything).
   // Pass `dataset` as the name, not the UUID (cognee 1.0.3 type-coerces a
   // UUID-formatted string to str and falls through to a by-name lookup).
-  // Cloud falls back to the per-item DELETE route.
+  // Cloud now uses /forget as the primary route too, with a fallback to
+  // legacy per-item DELETE for older deployments that don't expose /forget.
   async forget(params: {
     dataId?: string;
     dataset?: string;
     everything?: boolean;
   }): Promise<{ datasetId?: string; dataId?: string; deleted: boolean; error?: string }> {
     try {
-      if (this.isCloud) {
-        if (!params.dataset || !params.dataId) {
-          throw new Error("Cognee Cloud forget requires both dataset and dataId");
-        }
-        await this.fetchAPI<unknown>(`/datasets/${params.dataset}/data/${params.dataId}`, { method: "DELETE" });
-        return { datasetId: params.dataset, dataId: params.dataId, deleted: true };
-      }
-
       const body: Record<string, unknown> = {};
       if (params.everything) body.everything = true;
       if (params.dataset) body.dataset = params.dataset;
       if (params.dataId) body.data_id = params.dataId;
 
-      await this.fetchAPI<unknown>("/api/v1/forget", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const forgetPath = this.isCloud ? "/forget" : "/api/v1/forget";
+      try {
+        await this.fetchAPI<unknown>(forgetPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (error) {
+        // Backward compatibility: older cloud deployments may not expose /forget.
+        // In that case, fall back to per-item DELETE when enough identifiers are provided.
+        const msg = error instanceof Error ? error.message : String(error);
+        const missingForgetEndpoint = msg.includes("(404)") || msg.includes("(405)");
+        const canUseLegacyDelete = this.isCloud && !!params.dataset && !!params.dataId;
+        if (!missingForgetEndpoint || !canUseLegacyDelete) {
+          throw error;
+        }
+        await this.fetchAPI<unknown>(`/datasets/${params.dataset}/data/${params.dataId}`, {
+          method: "DELETE",
+        });
+      }
+
       return { datasetId: params.dataset, dataId: params.dataId, deleted: true };
     } catch (error) {
       return {
