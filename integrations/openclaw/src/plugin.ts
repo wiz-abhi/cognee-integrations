@@ -25,6 +25,13 @@ import { syncFiles, syncFilesScoped } from "./sync.js";
 type MemoryFlushPlanRegistrant = OpenClawPluginApi & {
   registerMemoryFlushPlan?: (resolver: typeof buildMemoryFlushPlan) => void;
 };
+
+// Module-scope dedupe so a duplicate register() (e.g. plugin loaded twice via
+// different module specifiers) doesn't run startup auto-sync twice for the
+// same workspace. The in-closure autoSyncStarted flag inside register() can't
+// catch this because each register() call gets its own closure.
+const autoSyncedWorkspaces = new Set<string>();
+
 const memoryCogneePlugin = {
   id: "cognee-openclaw",
   name: "Memory (Cognee)",
@@ -450,6 +457,13 @@ const memoryCogneePlugin = {
         resolveServiceReady?.();
 
         const logger = api.logger;
+
+        // Dedupe across duplicate register() calls in the same process.
+        if (autoSyncedWorkspaces.has(resolvedWorkspaceDir)) {
+          logger.debug?.(`cognee-openclaw: auto-sync already ran for ${resolvedWorkspaceDir} in this process, skipping`);
+          return;
+        }
+        autoSyncedWorkspaces.add(resolvedWorkspaceDir);
 
         try {
           await client.health();
