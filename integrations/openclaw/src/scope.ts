@@ -110,6 +110,19 @@ export function isMultiScopeEnabled(cfg: Required<CogneePluginConfig>): boolean 
 }
 
 /**
+ * Normalize an agent identifier to a stable key.
+ *
+ * OpenClaw lowercases agent ids at runtime (PluginHookAgentContext.agentId is e.g.
+ * "william", not "William"), but config (`agents.list[].id`, `cfg.agentId`) may be
+ * mixed-case. Lowercasing everywhere keeps startup seeding (which reads config)
+ * and runtime hooks (which read ctx.agentId) pointed at the SAME dataset and
+ * the SAME per-agent index bucket — otherwise you get split, e.g. "…-William" vs "…-william".
+ */
+export function normalizeAgentId(agentId: string | undefined, cfg: Required<CogneePluginConfig>): string {
+  return (agentId?.trim() || cfg.agentId || "default").toLowerCase();
+}
+
+/**
  * Resolve the Cognee dataset name for a given memory scope.
  *
  * `runtimeAgentId` lets multi-agent gateways pass the active agent's identity
@@ -130,7 +143,12 @@ export function datasetNameForScope(
         ? `${cfg.userDatasetPrefix}-${cfg.userId || "default"}`
         : `${cfg.datasetName}-user-${cfg.userId || "default"}`;
     case "agent": {
-      const id = runtimeAgentId?.trim() || cfg.agentId || "default";
+      const rawId = runtimeAgentId?.trim() || cfg.agentId || "default";
+      // Lowercase ONLY in per-agent mode, so existing single-agent / non-per-agent
+      // installs keep their exact dataset names (no orphaning on upgrade).
+      // OpenClaw already lowercases the runtime ctx.agentId, so per-agent mode
+      // stays internally consistent across startup-seed and runtime hooks.
+      const id = cfg.perAgentMemory ? rawId.toLowerCase() : rawId;
       if (cfg.agentDatasetTemplate) {
         return cfg.agentDatasetTemplate.replace(/\{agentId\}/g, id);
       }
