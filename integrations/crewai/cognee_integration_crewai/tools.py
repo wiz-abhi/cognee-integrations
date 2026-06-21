@@ -1,11 +1,12 @@
-import functools
-import cognee
 import asyncio
-from typing import Optional, List
-from crewai.tools import tool
+import concurrent.futures
+import functools
 import logging
 import threading
-import concurrent.futures
+from typing import List, Optional
+
+import cognee
+from crewai.tools import tool
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,7 @@ async def _enqueue_add(*args, **kwargs):
         await _add_queue.put((args, kwargs))
         while True:
             try:
-                next_args, next_kwargs = await asyncio.wait_for(
-                    _add_queue.get(), timeout=2
-                )
+                next_args, next_kwargs = await asyncio.wait_for(_add_queue.get(), timeout=2)
                 _add_queue.task_done()
             except asyncio.TimeoutError:
                 break

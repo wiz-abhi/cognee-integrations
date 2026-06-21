@@ -1,9 +1,10 @@
 import asyncio
-from dotenv import load_dotenv
 import os
+
 import cognee
-from crewai import Agent
 from cognee_integration_crewai import add_tool, search_tool
+from crewai import Agent
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -11,13 +12,9 @@ load_dotenv()
 async def main():
     from cognee.api.v1.config import config
 
-    config.data_root_directory(
-        os.path.join(os.path.dirname(__file__), "../.cognee/data_storage")
-    )
+    config.data_root_directory(os.path.join(os.path.dirname(__file__), "../.cognee/data_storage"))
 
-    config.system_root_directory(
-        os.path.join(os.path.dirname(__file__), "../.cognee/system")
-    )
+    config.system_root_directory(os.path.join(os.path.dirname(__file__), "../.cognee/system"))
 
     await cognee.prune.prune_data()
     await cognee.prune.prune_system(metadata=True)
@@ -41,13 +38,18 @@ async def main():
     fresh_agent = Agent(
         role="Research Analyst",
         goal="Find and analyze contracts in the healthcare industry using the knowledge base",
-        backstory="You are an expert research analyst with access to a comprehensive knowledge base about company contracts and partnerships.",
+        backstory=(
+            "You are an expert research analyst with access to a comprehensive "
+            "knowledge base about company contracts and partnerships."
+        ),
         tools=[add_tool, search_tool],
         verbose=True,
     )
 
     response = fresh_agent.kickoff(
-        "I need to research our contract portfolio. Can you search for any contracts we have with companies in the healthcare industry? Please use the search functionality to find this information."
+        "I need to research our contract portfolio. Can you search for any contracts "
+        "we have with companies in the healthcare industry? Please use the search "
+        "functionality to find this information."
     )
     print("\n=== AGENT RESPONSE ===")
     print(response.raw)
