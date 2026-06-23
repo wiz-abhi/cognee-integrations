@@ -142,8 +142,6 @@ integrations:
     source_repo: https://github.com/topoteretes/cognee-n8n
     notes: "n8n community node – add data, cognify, search, delete. Published via .github/workflows/n8n-publish.yml on `n8n-v*.*.*` tags."
 
-  # ── Pending migrations ─────────────────────────────────────────────
-
   - slug: crewai
     name: "Cognee Integration for CrewAI"
     owner: cognee
@@ -152,9 +150,11 @@ integrations:
     package_name: "cognee-integration-crewai"
     cognee_dependency: sdk
     current_version: "0.1.1"
-    migration_status: pending
+    migration_status: done
     source_repo: https://github.com/topoteretes/cognee-integration-crewai
     notes: "CrewAI agent tools – add, search, session management"
+
+  # ── Pending migrations ─────────────────────────────────────────────
 
   - slug: claude
     name: "Cognee Integration for Claude Agent SDK"
