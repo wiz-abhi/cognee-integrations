@@ -48,23 +48,51 @@ cognee = "cognee_integration_hermes"
 The setup wizard writes non-secret settings to `$HERMES_HOME/cognee.json` and
 secrets to `$HERMES_HOME/.env`.
 
-Local embedded mode:
+### Modes
+
+The provider connects to cognee in one of three modes. It picks the mode
+automatically from your config:
+
+| Mode | When it's used | How it talks to cognee |
+| --- | --- | --- |
+| **local-server** (default) | no `COGNEE_BASE_URL`, `COGNEE_EMBEDDED` unset | ensures a local cognee server is running and connects as a thin client |
+| **remote** | `COGNEE_BASE_URL` is set | thin client to your managed / cloud cognee |
+| **embedded** | `COGNEE_EMBEDDED=true` | runs cognee in-process |
+
+**Why local-server is the default.** cognee's local stores (SQLite, Kuzu/Ladybug,
+LanceDB) are single-writer. Driving them in-process from the agent's background
+threads — or from a second Hermes process sharing the same `data_root` — risks
+`database is locked` errors and corruption. A local cognee server is the single
+owner that serializes all access, so the agent just makes HTTP calls. This is the
+same design the Claude Code and Codex plugins use. **`embedded` is opt-in and is
+safe for single-process / offline use only.**
+
+local-server mode (default — just set your LLM creds):
 
 ```bash
 LLM_API_KEY=sk-...
 LLM_MODEL=gpt-4o-mini
 COGNEE_DATASET=hermes
+# COGNEE_LOCAL_PORT=8000   # optional; point at a shared server for a unified brain
 ```
 
-Remote service mode:
+Remote / cloud mode:
 
 ```bash
-COGNEE_SERVICE_URL=https://your-cognee-service.example
+COGNEE_BASE_URL=https://your-cognee-service.example   # canonical name
 COGNEE_API_KEY=...
 COGNEE_DATASET=hermes
 ```
 
-Optional settings:
+Embedded (in-process) mode — single-process / offline only:
+
+```bash
+COGNEE_EMBEDDED=true
+LLM_API_KEY=sk-...
+COGNEE_DATASET=hermes
+```
+
+### Optional settings
 
 | Setting | Env var | Default |
 | --- | --- | --- |
@@ -73,9 +101,15 @@ Optional settings:
 | `auto_route` | `COGNEE_AUTO_ROUTE` | `true` |
 | `improve_on_end` | `COGNEE_IMPROVE_ON_END` | `true` |
 | `session_prefix` | `COGNEE_SESSION_PREFIX` | `hermes` |
-| `service_url` | `COGNEE_SERVICE_URL` | empty |
+| `service_url` | `COGNEE_BASE_URL` (canonical) | empty |
+| `embedded` | `COGNEE_EMBEDDED` | `false` |
+| `local_port` | `COGNEE_LOCAL_PORT` | `8000` |
+| `server_boot_timeout` | `COGNEE_SERVER_BOOT_TIMEOUT` | `30` |
 | `data_root` | `COGNEE_DATA_ROOT` | `$HERMES_HOME/cognee/data` |
 | `system_root` | `COGNEE_SYSTEM_ROOT` | `$HERMES_HOME/cognee/system` |
+
+> `COGNEE_SERVICE_URL` is a deprecated alias for `COGNEE_BASE_URL`. It still works
+> (with lower precedence) but new setups should use `COGNEE_BASE_URL`.
 
 ## Hermes Commands
 
