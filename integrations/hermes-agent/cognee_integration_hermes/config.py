@@ -68,6 +68,9 @@ def load_config(hermes_home: str | Path | None = None) -> dict[str, Any]:
         "top_k": str_to_int(os.environ.get("COGNEE_TOP_K"), 5),
         "auto_route": str_to_bool(os.environ.get("COGNEE_AUTO_ROUTE"), True),
         "improve_on_end": str_to_bool(os.environ.get("COGNEE_IMPROVE_ON_END"), True),
+        # Tri-state: "" = auto (background only in server/remote mode, where the
+        # server outlives this process; synchronous in embedded). Set to force.
+        "improve_background": os.environ.get("COGNEE_IMPROVE_BACKGROUND", ""),
         "session_prefix": os.environ.get("COGNEE_SESSION_PREFIX", "hermes"),
         "data_root": os.environ.get("COGNEE_DATA_ROOT", ""),
         "system_root": os.environ.get("COGNEE_SYSTEM_ROOT", ""),

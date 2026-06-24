@@ -136,7 +136,9 @@ class TestInitializeModes(unittest.TestCase):
         self.assertIsNone(p._user)
         self.assertFalse(rec["identity_called"])
 
-    def test_local_server_failure_falls_back_to_embedded(self):
+    def test_local_server_failure_raises_not_silently_embedded(self):
+        # Falling back to embedded would reintroduce the DB-lock risk this PR
+        # removes, so a server that won't start is a hard error.
         env = {**_NO_URL, "COGNEE_EMBEDDED": ""}
         p, rec = _make_provider()
         with (
@@ -145,11 +147,80 @@ class TestInitializeModes(unittest.TestCase):
                 provider_mod, "ensure_local_server", side_effect=RuntimeError("no server")
             ),
         ):
-            p.initialize("sid")
-        self.assertFalse(p._remote_mode)
-        self.assertIsNone(rec["served"])
-        self.assertTrue(rec["roots_called"])
-        self.assertTrue(rec["identity_called"])
+            with self.assertRaises(RuntimeError):
+                p.initialize("sid")
+        self.assertFalse(rec["roots_called"])  # did NOT silently drop to embedded
+
+    def test_remote_failure_raises_not_silently_local(self):
+        # An explicit remote URL that fails must surface, not silently diverge to a
+        # local graph (data divergence / masked config error).
+        env = {**_NO_URL, "COGNEE_BASE_URL": "https://cloud.example/api"}
+        p, rec = _make_provider()
+
+        async def boom(url, key):
+            raise RuntimeError("unreachable")
+
+        p._do_serve = boom
+        with mock.patch.dict("os.environ", env, clear=False):
+            with self.assertRaises(RuntimeError):
+                p.initialize("sid")
+        self.assertFalse(rec["roots_called"])
+
+
+class TestUserKwarg(unittest.TestCase):
+    def test_omitted_in_remote_mode_even_with_user_set(self):
+        p, _ = _make_provider()
+        p._remote_mode = True
+        p._user = "USER"
+        kwargs = {}
+        p._add_user_kwarg(kwargs)
+        self.assertNotIn("user", kwargs)  # omitted, not user=None
+
+    def test_included_in_embedded_mode(self):
+        p, _ = _make_provider()
+        p._remote_mode = False
+        p._user = "USER"
+        kwargs = {}
+        p._add_user_kwarg(kwargs)
+        self.assertEqual(kwargs["user"], "USER")
+
+    def test_omitted_when_user_is_none(self):
+        p, _ = _make_provider()
+        p._remote_mode = False
+        p._user = None
+        kwargs = {}
+        p._add_user_kwarg(kwargs)
+        self.assertNotIn("user", kwargs)
+
+
+class TestImproveBackgroundDecision(unittest.TestCase):
+    """on_session_end backgrounds improve only when a server will finish the job."""
+
+    def _run_session_end(self, *, remote_mode, env_override=None):
+        p, _ = _make_provider()
+        p._initialized = True
+        p._writes_enabled = True
+        p._improve_on_end = True
+        p._remote_mode = remote_mode
+        p._config = {"improve_timeout": 300, "improve_background": env_override or ""}
+        captured = {}
+
+        async def fake_improve(run_in_background=False):
+            captured["bg"] = run_in_background
+
+        p._do_improve = fake_improve
+        p._is_breaker_open = lambda: False
+        p.on_session_end([])
+        return captured.get("bg")
+
+    def test_server_mode_backgrounds(self):
+        self.assertTrue(self._run_session_end(remote_mode=True))
+
+    def test_embedded_mode_runs_synchronously(self):
+        self.assertFalse(self._run_session_end(remote_mode=False))
+
+    def test_env_override_forces_background_in_embedded(self):
+        self.assertTrue(self._run_session_end(remote_mode=False, env_override="true"))
 
 
 class TestConfigModes(unittest.TestCase):

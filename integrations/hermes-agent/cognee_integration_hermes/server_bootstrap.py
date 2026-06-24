@@ -13,12 +13,15 @@ needed, poll ``/health``. No explicit lock is needed — only one process can bi
 the port, so concurrent spawns simply lose the bind and then observe health.
 """
 
+import logging
 import os
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 
 def health_ok(url, timeout=2.0):
@@ -43,22 +46,28 @@ def _spawn(port, data_root, system_root, log_path):
         log = open(log_path, "ab", buffering=0)  # noqa: SIM115 — handed to the child
     except Exception:
         log = subprocess.DEVNULL
-    subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "cognee.api.client:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-        ],
-        env=env,
-        stdout=log,
-        stderr=log,
-        start_new_session=True,  # detach: outlive the spawning call
-    )
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "cognee.api.client:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+            env=env,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,  # detach: outlive the spawning call
+        )
+    finally:
+        # The child inherited its own dup of the fd; close the parent's copy so we
+        # don't leak a descriptor on every initialize().
+        if log is not subprocess.DEVNULL:
+            log.close()
 
 
 def ensure_local_server(
@@ -80,9 +89,11 @@ def ensure_local_server(
         log_path = os.path.join(os.path.expanduser("~"), ".cognee-hermes-server.log")
     try:
         _spawn(port, data_root, system_root, log_path)
-    except Exception:
-        # Another process may already be binding the port; fall through to polling.
-        pass
+    except Exception as exc:
+        # A spawn failure may just be a port-bind race with another starter, in
+        # which case health polling below will still succeed. But it may also be a
+        # real problem (missing uvicorn, permission denied) — log it for diagnostics.
+        logger.warning("cognee server spawn attempt failed (will still poll /health): %s", exc)
     deadline = time.monotonic() + float(boot_timeout)
     while time.monotonic() < deadline:
         if health_ok(url):

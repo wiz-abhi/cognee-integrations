@@ -67,6 +67,13 @@ owner that serializes all access, so the agent just makes HTTP calls. This is th
 same design the Claude Code and Codex plugins use. **`embedded` is opt-in and is
 safe for single-process / offline use only.**
 
+**No silent fallbacks.** The provider never downgrades modes behind your back. If
+`COGNEE_BASE_URL` is set but unreachable, or the local server fails to start,
+initialization raises rather than quietly switching to a different mode — silent
+fallback would either mask a config error (remote → local data divergence) or
+reintroduce the very DB-lock risk this design removes (local-server → embedded).
+To accept the single-process trade-off, set `COGNEE_EMBEDDED=true` explicitly.
+
 local-server mode (default — just set your LLM creds):
 
 ```bash
@@ -100,6 +107,7 @@ COGNEE_DATASET=hermes
 | `top_k` | `COGNEE_TOP_K` | `5` |
 | `auto_route` | `COGNEE_AUTO_ROUTE` | `true` |
 | `improve_on_end` | `COGNEE_IMPROVE_ON_END` | `true` |
+| `improve_background` | `COGNEE_IMPROVE_BACKGROUND` | auto |
 | `session_prefix` | `COGNEE_SESSION_PREFIX` | `hermes` |
 | `service_url` | `COGNEE_BASE_URL` (canonical) | empty |
 | `embedded` | `COGNEE_EMBEDDED` | `false` |
@@ -110,6 +118,14 @@ COGNEE_DATASET=hermes
 
 > `COGNEE_SERVICE_URL` is a deprecated alias for `COGNEE_BASE_URL`. It still works
 > (with lower precedence) but new setups should use `COGNEE_BASE_URL`.
+
+> **`improve_background`** controls whether the session-end graph build
+> (`improve()`) runs in the background. Default `auto`: it backgrounds in
+> server/remote mode (the server outlives the agent and finishes the job) and runs
+> synchronously in `embedded` mode (the work runs in-process and must complete
+> before shutdown, or it is lost). Set `COGNEE_IMPROVE_BACKGROUND=true|false` to
+> force it. Previously `improve()` was always synchronous; this is the one
+> behavior change to be aware of when upgrading.
 
 ## Hermes Commands
 
