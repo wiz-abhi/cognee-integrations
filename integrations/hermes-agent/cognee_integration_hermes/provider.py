@@ -80,8 +80,12 @@ def _has_cognee() -> bool:
 
 
 def _safe_session_component(value: str) -> str:
-    cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in value)
-    return cleaned.strip("_") or "session"
+    # Sanitization kept consistent with the other integrations' session-id helpers
+    # (claude-code/codex `_sanitize_session_key`, openclaw `sanitizeSessionKey`):
+    # keep alphanumerics plus `-` `_` `.`, replace others with `_`, trim `._` ends,
+    # cap length at 120.
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in value)
+    return safe.strip("._")[:120] or "session"
 
 
 def _format_turn(user_content: str, assistant_content: str) -> str:
